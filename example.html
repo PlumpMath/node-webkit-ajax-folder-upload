@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Title</title>
+		<script type="text/javascript" src="jquery-2.1.1.min.js"></script>
+	</head>
+	<body>
+		<h1>Uploading files</h1>
+		<input id="nwdirectory" type="file" nwdirectory />
+
+		<script type="text/javascript">
+			$(document).ready(function() {
+
+				// Root path
+				var nwdirectory = '';
+
+				// Array of files, that will be filled by nodejs 'walk' module
+				var files = [];
+
+				$('#nwdirectory').bind('change', function(event) {
+					
+					// setting up root path
+					nwdirectory = $('#nwdirectory').val();
+
+					// Requiring walk (npm install walk)
+					var walk = require('walk');
+
+					// Walk-module will iterate through each subfolder and create structure,
+					// that will be stored in variabe 'files'
+					var walker = walk.walk(nwdirectory, { followLinks: false });
+					walker.on('file', function(root, stat, next) {
+
+						// Filtering files
+						if (filter(stat)) files.push({ root: root, name: stat.name });
+
+						// Calling next file to iterate
+						next();
+
+					});
+
+					// Calling upload function only for first file
+					walker.on('end', function() {
+
+						// If there is files
+						if (files.length) upload(files[0], 0, 0);
+
+					});
+				});
+
+				// Filter for walk-module
+				var filter = function(stat) {
+					return (
+						stat.name != '.htaccess' &
+						stat.name != '.DS_Store' &
+						stat.name.indexOf('.php') == -1 &
+						stat.name.indexOf('.phtml') == -1
+					) ? true : false;
+				}
+
+
+				// Upload function, where rest of the magic happens
+				var upload = function(file, i, count) {
+
+					// Creating FormData
+					var formData = new FormData();
+
+					// 'Converting' & attaching file to FormData
+					// By converting i mean creating File(), where we will store specific information like path & filename
+					// After we can add this file to FormData
+					var f = new File(file.root + '/' + file.name, file.name);
+					formData.append('files[]', f, f.name);
+
+					// Setting up additional data
+					// For example, in PhalconPhp this can be parsed as $this->response->getPost('foo');
+					formData.append('foo', 'bar');
+
+					// Creating xml http request
+					var xhr = new XMLHttpRequest();
+
+					// Setting up url
+					// Now here is the tricky part: since PhalconPhp is using PCRE regular expression,
+					// we will this feature, to transfer folder-path safe.
+					// Example: example.com/upload/{path}
+					// Example: example.com/upload/assets/js/jquery
+					var folder = file.root.substr(nwdirectory.length);
+					xhr.open('POST', 'http://example.com' + folder, true);
+
+					// Callback
+					xhr.onload = function() {
+						if (xhr.status === 200) {
+
+							// File is successfuly uploaded
+							console.log('File ('+file.name+') successfully uploaded!');
+							if (files.length != i+1) upload(files[i+1], i+1, 0);
+
+						} else {
+
+							// Oh, we've got errors, let's try to upload one more time!
+							console.log(xhr.status + ' - Error during uploading files. Restarting');
+							if (count < 5) {
+								upload(file, i, count+1);
+
+							} else {
+								console.log('Too many attemps, stoping...');
+
+							}
+
+						}
+					};
+
+					// Sending data
+					xhr.send(formData);
+
+				}
+
+
+			});
+		</script>
+	</body>
+</html>
